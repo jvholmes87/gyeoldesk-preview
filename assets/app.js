@@ -3,6 +3,7 @@
 //   <company>.gyeoldesk.com  -> that company's workspace (sign-in, WAR, team access)
 // Local testing: ?org=gnc opens a workspace on any host.
 import { createClient } from './vendor/supabase.mjs';
+import { photoGallery, bindPhotoErrors } from './war-photos.mjs?v=1f56b7ad';
 
 const SUPABASE_URL = 'https://wltuwsplrkrsfthkthxc.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_N8CLXOt4Sh01hSqJu8O9Rg_q8_V1LXh'; // publishable key: safe in the browser, data is protected by row-level security
@@ -601,6 +602,10 @@ async function renderProject(dateParam, keyParam) {
   const krima = lang === 'ko' ? (sn.krima_ko?.length ? sn.krima_ko : sn.krima_en) : (sn.krima_en?.length ? sn.krima_en : sn.krima_ko);
   const si = Array.isArray(sn.snapshots_internal) ? sn.snapshots_internal[0] : sn.snapshots_internal;
   const kd = (sn.key_dates || []).filter((r) => r.date_text);
+  // Photo status for this card: counts plus release-approved records only (see war-photos.mjs?v=1f56b7ad).
+  const { data: ps, error: psErr } = await sb.from('war_photo_sets')
+    .select('total,in_window,date_pending,historical,verified,excluded,approved_public,withheld,approved,updated_at')
+    .eq('project_key', p.project_key).eq('war_date', w.war_date).maybeSingle();
 
   box.innerHTML = `
     <p class="no-print"><a href="#/war/${w.war_date}">← ${esc(t('backBoard'))} (${esc(fmtDate(w.war_date))})</a></p>
@@ -624,6 +629,7 @@ async function renderProject(dateParam, keyParam) {
       ${kd.length ? `<section><h2>${esc(t('keyDates'))}</h2><table class="kd">
         <thead><tr><th scope="col">${esc(t('date'))}</th><th scope="col">${esc(t('item'))}</th></tr></thead>
         <tbody>${kd.map((r) => `<tr><td>${esc(r.date_text)}</td><td>${esc(pick(r.ko, r.en))}${warView.both ? `<div class="alt">${esc(lang === 'ko' ? r.en : r.ko)}</div>` : ''}</td></tr>`).join('')}</tbody></table></section>` : ''}
+      ${photoGallery([...(Array.isArray(f.photo_evidence) ? f.photo_evidence : []), ...(Array.isArray(ps?.approved) ? ps.approved : [])], p.project_key, w.war_date, lang, warView.both, psErr ? 'error' : ps)}
       ${krima?.length ? `<section><h2>${esc(t('krimaText'))}</h2>${bullets(krima)}</section>` : ''}
       ${si && ((si.internal_notes || []).length || (si.open_items || []).length) ? `<section class="internal no-print">
         ${(si.internal_notes || []).length ? `<h3>${esc(t('internal'))}</h3>${bullets(si.internal_notes)}` : ''}
@@ -632,6 +638,7 @@ async function renderProject(dateParam, keyParam) {
       ${appearances.length > 1 ? `<section class="no-print"><h2>${esc(t('otherWeeks'))}</h2><nav class="weeks">${appearances.map(({ w: aw }) => `
         <a href="#/war/${aw.war_date}/${encodeURIComponent(key)}" ${aw.id === w.id ? 'aria-current="page"' : ''}><span class="d">${esc(fmtDate(aw.war_date))}</span><span class="chip ${aw.status}">${esc(t(aw.status))}</span></a>`).join('')}</nav></section>` : ''}
     </article>`;
+  bindPhotoErrors(box, lang);
   $('#both')?.addEventListener('change', (e) => { warView.both = e.target.checked; renderProject(dateParam, keyParam); });
 }
 
